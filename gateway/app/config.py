@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     API_KEY_PREFIX: str = "visdom_live"
     PORT: int = 8085
     FRONTEND_URL: str = "http://localhost:5173"
+    VISDOM_SERVERS: str = ""
+    ADMIN_ENVIRONMENT: str = ""
+    VISDOM_ACTIVITY_TIMEOUT: float = 1.0
     SUPPORT_CONTACT: str = ""
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587
