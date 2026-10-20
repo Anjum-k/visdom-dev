@@ -19,13 +19,17 @@ import asyncio
 import concurrent.futures
 import json
 import logging
+import os
 import re
+import socket
+import ssl
 import threading
 import time
 import urllib.error
 import urllib.request
 
 from app.config import settings
+from app.internal_signing import signed_headers
 
 _SERVER_PATTERN = re.compile(r"server\s+([^\s;]+)")
 
@@ -56,11 +60,71 @@ def _read_within(response, deadline: float) -> bytes:
             raise ValueError("answer too large")
 
 
+ACTIVITY_PATH = "/vis/_activity"
+
+
+_reported: set[str] = set()
+
+
+def internal_setup_problem() -> str | None:
+    if not settings.VISDOM_INTERNAL_READ_KEY:
+        return "VISDOM_INTERNAL_READ_KEY is not set"
+    if not settings.VISDOM_INTERNAL_CA:
+        return "VISDOM_INTERNAL_CA is not set"
+    if not os.path.isfile(settings.VISDOM_INTERNAL_CA) or not os.access(settings.VISDOM_INTERNAL_CA, os.R_OK):
+        return "VISDOM_INTERNAL_CA cannot be read"
+    return None
+
+
+def _setup_is_complete() -> bool:
+    problem = internal_setup_problem()
+    if problem is None:
+        return True
+    if problem not in _reported:
+        _reported.add(problem)
+        logging.error(
+            "not calling the visdom instances: %s (VISDOM_INTERNAL_CA is %r)",
+            problem,
+            settings.VISDOM_INTERNAL_CA,
+        )
+    return False
+
+
+def internal_url(address: str, path: str) -> str:
+    host = address.rsplit(":", 1)[0]
+    return f"https://{host}:{settings.VISDOM_INTERNAL_PORT}{path}"
+
+
+def internal_tls() -> ssl.SSLContext:
+    context = ssl.create_default_context(cafile=settings.VISDOM_INTERNAL_CA)
+    context.check_hostname = False
+    return context
+
+
+def certificate_days_left(address: str, timeout: float) -> float | None:
+    if not _setup_is_complete():
+        return None
+    host = address.rsplit(":", 1)[0]
+    try:
+        with socket.create_connection((host, settings.VISDOM_INTERNAL_PORT), timeout=timeout) as raw:
+            with internal_tls().wrap_socket(raw, server_hostname=host) as tls:
+                not_after = tls.getpeercert()["notAfter"]
+    except (OSError, KeyError, ValueError) as exc:
+        logging.warning("could not read the internal certificate of %s: %s", address, exc)
+        return None
+    return (ssl.cert_time_to_seconds(not_after) - time.time()) / 86400
+
+
 def _ask(address: str, timeout: float) -> tuple[bool, list[dict]]:
-    url = f"http://{address}/vis/_activity"
+    if not _setup_is_complete():
+        return False, []
+    request = urllib.request.Request(
+        internal_url(address, ACTIVITY_PATH),
+        headers=signed_headers(settings.VISDOM_INTERNAL_READ_KEY, "GET", ACTIVITY_PATH),
+    )
     deadline = time.monotonic() + timeout
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as response:
+        with urllib.request.urlopen(request, timeout=timeout, context=internal_tls()) as response:
             payload = json.loads(_read_within(response, deadline) or b"{}")
     except (urllib.error.URLError, OSError, ValueError) as exc:
         logging.warning("could not read activity from %s: %s", address, exc)

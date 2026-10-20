@@ -18,13 +18,19 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app import heartbeat
-from app.admin.activity import activity_per_instance, instance_addresses
+from app.admin.activity import (
+    activity_per_instance,
+    certificate_days_left,
+    instance_addresses,
+    internal_setup_problem,
+)
 from app.config import settings
 from app.dependencies import get_db
 
 router = APIRouter(prefix="/health", tags=["health"])
 
 COMPONENT_TIMEOUT = 2.0
+CERTIFICATE_WARNING_DAYS = 30
 
 
 @router.get("", status_code=status.HTTP_200_OK)
@@ -82,6 +88,24 @@ def component_health(response: Response, db: Session = Depends(get_db)):
         visdom_ok = True
         checks["visdom"] = "no instances configured"
 
+    setup_problem = internal_setup_problem() if addresses else None
+    if setup_problem:
+        checks["internal_setup"] = setup_problem
+
+    certificate_ok = True
+    readings = [certificate_days_left(a, COMPONENT_TIMEOUT) for a in addresses]
+    days_left = [days for days in readings if days is not None]
+    unread = len(readings) - len(days_left)
+    if unread:
+        certificate_ok = False
+        checks["internal_certificate"] = f"could not be read on {unread} of {len(readings)}"
+    elif days_left:
+        soonest = min(days_left)
+        checks["internal_certificate"] = f"{int(soonest)} days left"
+        if soonest < CERTIFICATE_WARNING_DAYS:
+            certificate_ok = False
+            logging.warning("the internal certificate expires in %d days", int(soonest))
+
     metering_ok = True
     if database_ok:
         try:
@@ -92,7 +116,7 @@ def component_health(response: Response, db: Session = Depends(get_db)):
             logging.exception("component health could not read the metering heartbeat")
             metering_ok, checks["metering"] = False, "unknown"
 
-    healthy = database_ok and visdom_ok and metering_ok
+    healthy = database_ok and visdom_ok and metering_ok and certificate_ok and not setup_problem
     if not healthy:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     return {"status": "healthy" if healthy else "degraded", "checks": checks}
