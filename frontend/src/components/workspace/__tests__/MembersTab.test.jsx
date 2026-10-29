@@ -445,7 +445,11 @@ describe('MembersTab', () => {
 
     it('shows an error toast when a role update fails', async () => {
         const user = userEvent.setup();
-        mockPut.mockRejectedValue(new Error('Role update failed'));
+        mockPut.mockRejectedValue({
+            response: {
+                data: { detail: 'Role update failed' },
+            },
+        });
 
         render(
             <MembersTab

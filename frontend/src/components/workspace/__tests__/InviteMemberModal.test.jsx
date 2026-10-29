@@ -21,10 +21,6 @@ vi.mock('../../toast/useToast', () => ({
     }),
 }));
 
-vi.mock('../../../utils/helpers', () => ({
-    parseApiError: (err, fallback) => err?.message || fallback,
-}));
-
 vi.mock('../../ModalPortal', () => ({
     default: ({ children }) => <div>{children}</div>,
 }));
@@ -90,7 +86,11 @@ describe('InviteMemberModal', () => {
     it('displays an error when the invitation API request fails', async () => {
         const user = userEvent.setup();
 
-        mockPost.mockRejectedValue(new Error('Invitation failed'));
+        mockPost.mockRejectedValue({
+            response: {
+                data: { detail: 'Invitation failed' },
+            },
+        });
 
         render(
             <InviteMemberModal

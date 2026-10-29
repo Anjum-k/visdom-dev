@@ -6,12 +6,7 @@ import { useConfirm } from '../../context/ConfirmContext';
 import { useToast } from '../toast/useToast';
 import InviteMemberModal from './InviteMemberModal';
 import { cachedGet, invalidate } from '../../utils/requestCache';
-import { ROLE_BADGE } from '../../utils/helpers';
-
-const showApiError = (toast, err, fallbackMessage) => {
-  const message = err?.message || fallbackMessage;
-  toast.error(message);
-};
+import { ROLE_BADGE, parseApiError } from '../../utils/helpers';
 
 const MembersTab = ({ workspaceId, currentUserId, isAdmin, ownerId, onOwnerChanged }) => {
   const [members, setMembers] = useState([]);
@@ -34,8 +29,8 @@ const MembersTab = ({ workspaceId, currentUserId, isAdmin, ownerId, onOwnerChang
   }, [workspaceId]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchMembers();
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+fetchMembers();
   }, [fetchMembers]);
 
   const handleInvited = (member) => {
@@ -51,7 +46,7 @@ const MembersTab = ({ workspaceId, currentUserId, isAdmin, ownerId, onOwnerChang
       setMembers((prev) => prev.map((m) => (m.user_id === userId ? response.data : m)));
       toast.success('Role updated.');
     } catch (err) {
-      showApiError(toast, err, 'Failed to update role.');
+      toast.error(parseApiError(err, 'Failed to update role.'));
     }
   };
 
@@ -70,7 +65,7 @@ const MembersTab = ({ workspaceId, currentUserId, isAdmin, ownerId, onOwnerChang
       setMembers((prev) => prev.filter((m) => m.user_id !== userId));
       toast.success('Member removed.');
     } catch (err) {
-      showApiError(toast, err, 'Failed to remove member.');
+      toast.error(parseApiError(err, 'Failed to remove member.'));
     }
   };
 
@@ -92,7 +87,7 @@ const MembersTab = ({ workspaceId, currentUserId, isAdmin, ownerId, onOwnerChang
       onOwnerChanged?.(response.data);
       toast.success(`${member.email} now owns this workspace.`);
     } catch (err) {
-      showApiError(toast, err, 'Failed to hand over the workspace.');
+      toast.error(parseApiError(err, 'Failed to hand over the workspace.'));
     }
   };
 
@@ -115,7 +110,7 @@ const MembersTab = ({ workspaceId, currentUserId, isAdmin, ownerId, onOwnerChang
       setMembers((prev) => prev.filter((m) => m !== member));
       toast.success(opts.successMessage);
     } catch (err) {
-      showApiError(toast, err, 'Failed to cancel.');
+      toast.error(parseApiError(err, 'Failed to cancel.'));
     }
   };
 
@@ -126,7 +121,7 @@ const MembersTab = ({ workspaceId, currentUserId, isAdmin, ownerId, onOwnerChang
       setMembers((prev) => prev.map((m) => (m.user_id === userId ? response.data : m)));
       toast.success('Request approved.');
     } catch (err) {
-      showApiError(toast, err, 'Failed to approve request.');
+      toast.error(parseApiError(err, 'Failed to approve request.'));
     }
   };
 
